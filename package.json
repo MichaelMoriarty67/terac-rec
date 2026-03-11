@@ -1,0 +1,15 @@
+{
+  "name": "electron-screen-recorder",
+  "version": "1.0.0",
+  "description": "screen recorder for Terac take home!",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Michael Moriarty",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^41.0.0"
+  }
+}
