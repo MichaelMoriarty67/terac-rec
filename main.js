@@ -1,6 +1,6 @@
 const { app, Tray, Menu } = require('electron/main')
 const { nativeImage } = require('electron/common')
-const { doSomething } = require('./rand')
+const { doSomethingTs } = require('./dist/index')
 
 let tray = null
 
@@ -23,4 +23,4 @@ app.whenReady().then(() => {
     tray.setContextMenu(contextMenu)
 })
 
-doSomething()
+doSomethingTs()

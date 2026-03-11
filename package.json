@@ -5,11 +5,17 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "backend:dev": "tsx src/index.ts",
+    "backend:build": "tsc -p tsconfig.json",
+    "backend:start": "node dist/index.js"
   },
   "author": "Michael Moriarty",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^41.0.0"
+    "@types/node": "^25.4.0",
+    "electron": "^41.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }
