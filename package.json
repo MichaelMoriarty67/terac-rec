@@ -2,20 +2,35 @@
   "name": "electron-screen-recorder",
   "version": "1.0.0",
   "description": "screen recorder for Terac take home!",
-  "main": "main.js",
+  "main": "out/main.js",
+  "type": "commonjs",
   "scripts": {
-    "start": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "backend:dev": "tsx src/index.ts",
-    "backend:build": "tsc -p tsconfig.json",
-    "backend:start": "node dist/index.js"
+    "dev": "electron bootstrap.js",
+    "build": "npm run build:swift && npm run build:render && tsc && electron-builder --arm64",
+    "compile": "tsc",
+    "build:swift": "cd swift-capture && swift build -c release && cp .build/release/ScreenCapture ../resources/ScreenCapture && codesign --sign - --entitlements ../entitlements.plist --force ../resources/ScreenCapture",
+    "build:render": "tsc -p renderer/tsconfig.json --noEmitOnError false"
   },
   "author": "Michael Moriarty",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^25.4.0",
     "electron": "^41.0.0",
+    "electron-builder": "^26.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
+  },
+  "build": {
+    "extraResources": [
+      {
+        "from": "resources/ScreenCapture",
+        "to": "ScreenCapture"
+      }
+    ],
+    "mac": {
+      "entitlements": "entitlements.plist",
+      "entitlementsInherit": "entitlements.plist",
+      "hardenedRuntime": false
+    }
   }
 }
