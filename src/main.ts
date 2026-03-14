@@ -1,9 +1,14 @@
+import os from 'os'
 import path from 'path'
 import * as fs from 'fs'
 import { app, BrowserWindow, ipcMain, IpcMainEvent, Menu, Tray, nativeImage, DesktopCapturerSource } from 'electron'
+import { Room } from '@livekit/rtc-node'
 
-import { getSources, startAudioRecording, stopAudioRecording } from './capture'
-import { mergeAudioVideo } from './merge'
+import { getSources, getDisplaySize, startAudioRecording, stopAudioRecording } from './capture'
+import { concatVideoAudioChunks } from './merge'
+import { recFallbackDir, roomUrl, roomToken } from './config'
+import { createRoom, publishVideo } from './livekit'
+
 
 let hiddenWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -11,18 +16,23 @@ let isRecording = false
 let screens: DesktopCapturerSource[] = []
 let currScreen: DesktopCapturerSource | null = null
 let liveKitUpload: boolean = true
+let recTimestamp: number | null = null
+let segmentCounter: number = 0
+let liveKitRoom: Room | null = null
 
-// create hidden browser window to run render process
+if (!fs.existsSync(recFallbackDir)) {
+    fs.mkdirSync(recFallbackDir, {recursive: true})
+}
 
-
-app.whenReady().then(async () => {
-    // register ipc event handler for when video is done recording on render process
-    
+app.whenReady().then(async () => {    
     screens = await getSources()
     if (screens.length > 0) {
         currScreen = screens[0] ?? null
     }
+
+    liveKitRoom = await createRoom(roomUrl, roomToken)
     
+    // create hidden browser window to run render process
     hiddenWindow = new BrowserWindow({
         show: false,
         webPreferences: {
@@ -40,8 +50,12 @@ app.whenReady().then(async () => {
         {
             label: 'Start Recording',
             type: 'normal',
-            click: (menuItem) => {
+            click: async (menuItem) => {
                 if (!isRecording){
+                    // setup trackers and dirs for recording
+                    recTimestamp = Date.now()
+                    segmentCounter = 0
+
                     // start audio and video recording
                     startAudioRecording()
                     hiddenWindow?.webContents.send('start-recording', screens[0]?.id)
@@ -50,7 +64,7 @@ app.whenReady().then(async () => {
                     menuItem.label = isRecording ? 'Stop Recording' : 'Start Recording'
                     tray?.setContextMenu(contextMenu)
                 } else {
-                    stopAudioRecording()
+                    await stopAudioRecording()
                     hiddenWindow?.webContents.send('stop-recording')
                 }
             }
@@ -80,10 +94,36 @@ app.whenReady().then(async () => {
         }
     ])
     
-    ipcMain.on('video-ready', (_: IpcMainEvent, buffer: ArrayBuffer) => {
+    // register ipc event handler for when video chunks are sent from render process
+    ipcMain.on('video-chunk-ready', (_: IpcMainEvent, buffer: ArrayBuffer, start_ts: number) => {
+        if (!recTimestamp) {
+            throw Error("Must have current recording ts available to save chunk")
+        }
+
         const buf = Buffer.from(buffer)
-        fs.writeFileSync('/tmp/video.webm', buf)
+
+        const chunkFilePath = path.join(recFallbackDir, `${recTimestamp}_${segmentCounter}.webm`)
+        fs.writeFileSync(chunkFilePath, buf)
+
+        segmentCounter++
     })
+
+    // register ipc event handler for when render process is done recording video
+    ipcMain.on('video-ready', async (_: IpcMainEvent)=> {
+        if (!recTimestamp) {
+            throw Error("Must have current recording ts available to save chunk")
+        }
+        
+        const {videoPath, audioPath} = await concatVideoAudioChunks(recFallbackDir, recTimestamp)
+        if (liveKitUpload && currScreen && liveKitRoom) { // CLEAN ME
+            const {height, width} = getDisplaySize(currScreen.display_id)
+            await publishVideo(liveKitRoom, videoPath, width, height)
+        }
+
+        recTimestamp = null
+        segmentCounter = 0
+    })
+
 
     hiddenWindow.webContents.on('did-finish-load', () => {
         tray?.setContextMenu(contextMenu)

@@ -1,6 +1,7 @@
-import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
-import { app, desktopCapturer } from 'electron'
+import { spawn, ChildProcess } from 'child_process'
+
+import { app, desktopCapturer, screen } from 'electron'
 
 let captureProcess: ChildProcess | null = null
 
@@ -39,5 +40,14 @@ export async function getSources() {
     const sources = await desktopCapturer.getSources({ types: ['screen']})
     
     return sources
+}
+
+// get display size using Screen api display ids
+export function getDisplaySize(displayId: string): { width: number, height: number } {
+  const display = screen.getAllDisplays().find(d => String(d.id) === displayId);
+  
+  if (!display) throw new Error(`No display found for source ${displayId}`);
+  
+  return display.size;
 }
 
