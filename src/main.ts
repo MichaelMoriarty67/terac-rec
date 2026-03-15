@@ -57,7 +57,7 @@ app.whenReady().then(async () => {
                     segmentCounter = 0
 
                     // start audio and video recording
-                    startAudioRecording()
+                    startAudioRecording(recTimestamp)
                     hiddenWindow?.webContents.send('start-recording', screens[0]?.id)
                     
                     isRecording = !isRecording

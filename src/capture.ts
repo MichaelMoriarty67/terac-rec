@@ -9,9 +9,9 @@ const binaryPath = app.isPackaged
     ? path.join(process.resourcesPath, 'ScreenCapture')
     : path.join(__dirname, '../resources/ScreenCapture')
 
-export function startAudioRecording(): void {
+export function startAudioRecording(timestamp: number): void {
     console.log("Binary path: ", binaryPath)
-    captureProcess = spawn(binaryPath)
+    captureProcess = spawn(binaryPath, ['--timestamp', timestamp.toString()])
     console.log('Swift process spawned, PID:', captureProcess.pid)
 
     captureProcess.stderr?.on('data', (data: Buffer) => {
@@ -19,8 +19,8 @@ export function startAudioRecording(): void {
     })
 
     captureProcess.on('close', (code, signal) => {
-    console.log('Swift process exited with code:', code, 'signal:', signal)
-})
+        console.log('Swift process exited with code:', code, 'signal:', signal)
+    })
 }
 
 export function stopAudioRecording(): Promise<void> {
