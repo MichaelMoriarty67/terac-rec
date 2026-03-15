@@ -6,7 +6,7 @@ import { Room } from '@livekit/rtc-node'
 
 import { getSources, getDisplaySize, startAudioRecording, stopAudioRecording } from './capture'
 import { concatVideoAudioChunks } from './merge'
-import { recFallbackDir, roomUrl, roomToken } from './config'
+import { recFallbackDir, roomUrl, mainRoomToken, rendererRoomToken } from './config'
 import { createRoom, publishVideo } from './livekit'
 
 
@@ -30,7 +30,7 @@ app.whenReady().then(async () => {
         currScreen = screens[0] ?? null
     }
 
-    liveKitRoom = await createRoom(roomUrl, roomToken)
+    liveKitRoom = await createRoom(roomUrl, mainRoomToken)
     
     // create hidden browser window to run render process
     hiddenWindow = new BrowserWindow({
@@ -58,7 +58,7 @@ app.whenReady().then(async () => {
 
                     // start audio and video recording
                     startAudioRecording(recTimestamp)
-                    hiddenWindow?.webContents.send('start-recording', screens[0]?.id)
+                    hiddenWindow?.webContents.send('start-recording', screens[0]?.id, roomUrl, rendererRoomToken)
                     
                     isRecording = !isRecording
                     menuItem.label = isRecording ? 'Stop Recording' : 'Start Recording'
@@ -127,6 +127,7 @@ app.whenReady().then(async () => {
 
     hiddenWindow.webContents.on('did-finish-load', () => {
         tray?.setContextMenu(contextMenu)
+        hiddenWindow?.webContents.openDevTools({ mode: 'detach' })
     })
 
     hiddenWindow.loadFile('renderer/index.html')

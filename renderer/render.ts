@@ -1,9 +1,13 @@
+import { Room, LocalVideoTrack, Track } from 'livekit-client'
+
 const chunkMsInterval: number = 5000
 
 let recorder: MediaRecorder | null = null
 let stream: MediaStream | null = null
 let intervalId: ReturnType<typeof setInterval> | null = null
 let pendingChunks: number = 0
+let room: Room | null = null
+let videoTrack: LocalVideoTrack | null = null
 
 function startNewRecorder() {
     if (!stream) return
@@ -34,7 +38,7 @@ function startNewRecorder() {
     recorder.start()
 }
 
-window.electronAPI.onStartRecording(async (_, screen: string) => {
+window.electronAPI.onStartRecording(async (_, screen: string, livekitUrl: string, livekitToken: string) => {
     pendingChunks = 0
 
     const getUserMediaOptions: any = {
@@ -48,13 +52,38 @@ window.electronAPI.onStartRecording(async (_, screen: string) => {
     }
 
     stream = await navigator.mediaDevices.getUserMedia(getUserMediaOptions)
-    startNewRecorder()
 
+    // Start local chunking
+    startNewRecorder()
     intervalId = setInterval(() => recorder?.stop(), chunkMsInterval)
+
+    // Stream to LiveKit simultaneously
+    room = new Room()
+    room.prepareConnection(livekitUrl, livekitToken);
+    await room.connect(livekitUrl, livekitToken)
+
+    const mediaStreamTrack = stream.getVideoTracks()[0]!
+    videoTrack = new LocalVideoTrack(mediaStreamTrack)
+    await room.localParticipant.publishTrack(videoTrack, {
+        source: Track.Source.ScreenShare,
+    })
+
+    console.log('recording locally and streaming to livekit...')
 })
 
-window.electronAPI.onStopRecording(() => {
+window.electronAPI.onStopRecording(async () => {
     if (!recorder) return
+
+    // Stop LiveKit stream
+    if (videoTrack) {
+        await room?.localParticipant.unpublishTrack(videoTrack)
+        videoTrack.stop()
+        videoTrack = null
+    }
+    await room?.disconnect()
+    room = null
+
+    // Stop local chunking
     clearInterval(intervalId!)
     intervalId = null
     recorder.stop()

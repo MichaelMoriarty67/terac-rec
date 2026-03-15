@@ -10,9 +10,6 @@ import {
 } from '@livekit/rtc-node';
 import { spawn } from 'child_process';
 
-const url: string = 'ws://localhost:7880';
-const token: string = 'example-token';
-
 export async function publishVideo(room: Room, videoPath: string, width: number, height: number): Promise<void> {
   const videoSource = new VideoSource(width, height);
   const videoTrack = LocalVideoTrack.createVideoTrack('my-video', videoSource);

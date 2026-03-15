@@ -2,7 +2,8 @@ import os from 'os'
 import path from 'path'
 
 const recFallbackDir = path.join(os.homedir(), "Documents", "Terac", "Recordings")
-const roomUrl = 'ws://localhost:7880'
-const roomToken = 'token-here'
+const roomUrl = 'wss://terac-test-luzsolx8.livekit.cloud'
+const rendererRoomToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzM2OTg0MTYsImlkZW50aXR5IjoicmVuZGVyZXIiLCJpc3MiOiJBUElvUkc2OUFHRHlhTWciLCJuYW1lIjoicmVuZGVyZXIiLCJuYmYiOjE3NzM2MTIwMTYsInN1YiI6InJlbmRlcmVyIiwidmlkZW8iOnsicm9vbSI6InRlc3Rfcm9vbSIsInJvb21Kb2luIjp0cnVlfX0.GeFiVOGqGmlVIzlvA7F0kTtZxG_HBmzZRnJAxsf8RC8'
+const mainRoomToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzM2OTg0NjMsImlkZW50aXR5IjoibWFpbiIsImlzcyI6IkFQSW9SRzY5QUdEeWFNZyIsIm5hbWUiOiJtYWluIiwibmJmIjoxNzczNjEyMDYzLCJzdWIiOiJtYWluIiwidmlkZW8iOnsicm9vbSI6InRlc3Rfcm9vbSIsInJvb21Kb2luIjp0cnVlfX0.d9lF78XSYFGZbjG2D5Pmqc-PvimHVWTQbq-LqDeUjks'
 
-export { recFallbackDir, roomUrl, roomToken }
+export { recFallbackDir, roomUrl, mainRoomToken, rendererRoomToken }
