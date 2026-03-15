@@ -7,6 +7,17 @@ import os
 // MARK: - Configuration
 
 let chunkIntervalMs: Int = 5000
+
+let recordingTimestamp: String = {
+    if let idx = CommandLine.arguments.firstIndex(of: "--timestamp"),
+        idx + 1 < CommandLine.arguments.count
+    {
+        return CommandLine.arguments[idx + 1]
+    }
+    fputs("Usage: ScreenCapture --timestamp <ms>\n", stderr)
+    exit(1)
+}()
+
 let outputDir: String = {
     let dir = FileManager.default
         .homeDirectoryForCurrentUser
@@ -22,7 +33,7 @@ let outputDir: String = {
 // MARK: - Helpers
 
 func chunkURL(for index: Int) -> URL {
-    URL(fileURLWithPath: "\(outputDir)/chunk_\(index).m4a")
+    URL(fileURLWithPath: "\(outputDir)/\(recordingTimestamp)_\(index).m4a")
 }
 
 func makeWriter(for index: Int) throws -> AVAssetWriter {
@@ -50,7 +61,7 @@ func makeAudioInput(sourceFormat: CMFormatDescription?) -> AVAssetWriterInput {
 // MARK: - Shared Mutable State
 
 struct AudioState: @unchecked Sendable {
-    var writer: AVAssetWriter?  // nil until first sample of each chunk
+    var writer: AVAssetWriter?
     var audioInput: AVAssetWriterInput?
     var writerStarted: Bool = false
     var chunkCounter: Int = 0
@@ -133,8 +144,6 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
             oldCounter: Int
         )
 
-        // Snapshot and clear — didOutputSampleBuffer will lazily create the
-        // next writer on the first sample that arrives after rotation.
         let result: RotateResult? = state.withLockUnchecked { s in
             guard s.writerStarted, let oldWriter = s.writer else { return nil }
 
@@ -165,7 +174,10 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of type: SCStreamOutputType
     ) {
-        guard type == .audio, sampleBuffer.isValid else { return }
+        guard type == .audio,
+            sampleBuffer.isValid,
+            CMSampleBufferGetNumSamples(sampleBuffer) > 0
+        else { return }
 
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let fmt = CMSampleBufferGetFormatDescription(sampleBuffer)
@@ -175,7 +187,6 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
                 s.formatDescription = fmt
             }
 
-            // Lazily create the writer on the first sample of every chunk.
             if s.writer == nil {
                 s.writer = try? makeWriter(for: s.chunkCounter)
             }
