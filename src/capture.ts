@@ -23,16 +23,17 @@ export function startAudioRecording(): void {
 })
 }
 
-export function stopAudioRecording(): Promise<string> {
+export function stopAudioRecording(): Promise<void> {
     return new Promise((resolve, reject) => {
         if (!captureProcess) return reject('No recording in progress')
 
-        // Swift prints the file path to stdout when done
-        captureProcess.stdout?.once('data', (data: Buffer) => {
-            resolve(data.toString().trim()) // resolves with "/tmp/recording.mp4"
+        captureProcess.once('close', () => {
+            captureProcess = null
+            resolve()
         })
 
-        captureProcess.kill('SIGTERM')
+        // tell swift process to stop recording
+        captureProcess.kill('SIGINT')
     })
 }
 
