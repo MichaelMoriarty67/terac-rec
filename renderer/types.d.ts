@@ -5,6 +5,7 @@ declare global {
             onStopRecording: (callback: (event: unknown) => void) => void
             sendVideoChunk: (buffer: ArrayBuffer, start_ts: number) => void
             sendVideoReady: () => void
+            liveKitToggle: (callback: (event: unknown, upload: boolean) => void) => void
         }
     }
 }

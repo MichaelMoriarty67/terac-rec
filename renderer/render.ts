@@ -88,3 +88,13 @@ window.electronAPI.onStopRecording(async () => {
     intervalId = null
     recorder.stop()
 })
+
+window.electronAPI.liveKitToggle(async (_, upload: boolean) => {
+    if (!videoTrack) return
+    
+    if (upload) {
+        await room?.localParticipant.publishTrack(videoTrack, { source: Track.Source.ScreenShare })
+    } else {
+        await room?.localParticipant.unpublishTrack(videoTrack, false)
+    }
+})

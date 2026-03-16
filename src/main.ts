@@ -94,6 +94,14 @@ app.whenReady().then(async () => {
             checked: liveKitUpload,
             click: (menuItem) => {
                 liveKitUpload = menuItem.checked
+                if (!liveKitUpload) {
+                    setAudioDataHandler((chunk: Buffer<ArrayBufferLike>) => {})
+                    hiddenWindow?.webContents.send('livekit-toggle', liveKitUpload)
+                } else {
+                    setAudioDataHandler(publishAudioCallback)
+                    hiddenWindow?.webContents.send('livekit-toggle', liveKitUpload)
+                }
+
             }
             
         }
