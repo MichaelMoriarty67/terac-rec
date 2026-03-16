@@ -1,72 +1,53 @@
 import {
   Room,
   VideoSource,
-  LocalVideoTrack,
-  dispose,
-  VideoBufferType,
-  VideoFrame,
+  AudioSource,
+  LocalAudioTrack,
+  AudioFrame,
   TrackPublishOptions,
-  VideoCodec,
+  TrackSource
 } from '@livekit/rtc-node';
 import { spawn } from 'child_process';
 
-export async function publishVideo(room: Room, videoPath: string, width: number, height: number): Promise<void> {
-  const videoSource = new VideoSource(width, height);
-  const videoTrack = LocalVideoTrack.createVideoTrack('my-video', videoSource);
+export async function publishAudio(room: Room): Promise<(chunk: Buffer) => void> {
+  const sampleRate = 48000
+  const channels = 2
+
+  const audioSource = new AudioSource(sampleRate, channels)
+  const audioTrack = LocalAudioTrack.createAudioTrack('system-audio', audioSource)
 
   const publishOptions = new TrackPublishOptions({
-    videoCodec: VideoCodec.H264,
+    source: TrackSource.SOURCE_SCREENSHARE_AUDIO,
+    dtx: false,
+    red: false,
     simulcast: false,
-  });
+})
 
-  await room.localParticipant?.publishTrack(videoTrack, publishOptions);
-  console.log('video track published');
+  await room.localParticipant?.publishTrack(audioTrack, publishOptions)
+  console.log('audio track published')
 
-  const frameSize = width * height * 1.5;
-  let buffer = Buffer.alloc(0);
+  // Swift sends 32-bit float PCM, LiveKit expects 16-bit signed int
+  // Convert float32 → int16 and push as AudioFrames
+  return (chunk: Buffer) => {
+    const totalFloats = chunk.byteLength / 4
+    const samplesPerChannel = totalFloats / channels
+    const int16 = new Int16Array(totalFloats)
 
-  const ffmpeg = spawn('ffmpeg', [
-    '-i', videoPath,
-    '-f', 'rawvideo',
-    '-pix_fmt', 'yuv420p',
-    '-vf', `scale=${width}:${height}`,
-    'pipe:1',
-  ]);
-
-  ffmpeg.stdout.on('data', (chunk: Buffer) => {
-    buffer = Buffer.concat([buffer, chunk]);
-    while (buffer.length >= frameSize) {
-      const frame = buffer.subarray(0, frameSize);
-      buffer = buffer.subarray(frameSize);
-      videoSource.captureFrame(
-        new VideoFrame(
-          new Uint8Array(frame),
-          width,
-          height,
-          VideoBufferType.I420,
-        ),
-        BigInt(Date.now() * 1000),
-      );
+    // Deplanar: input is [L L L L ... R R R R]
+    // Output must be interleaved: [L R L R L R ...]
+    for (let i = 0; i < samplesPerChannel; i++) {
+        const l = chunk.readFloatLE(i * 4)
+        const r = chunk.readFloatLE((samplesPerChannel + i) * 4)
+        int16[i * 2]     = Math.max(-32768, Math.min(32767, Math.round(l * 32767)))
+        int16[i * 2 + 1] = Math.max(-32768, Math.min(32767, Math.round(r * 32767)))
     }
-  });
 
-  ffmpeg.stderr.on('data', (d: Buffer) => console.error('[ffmpeg]', d.toString()));
-
-  return new Promise((resolve, reject) => {
-    ffmpeg.on('close', (code) => {
-      if (code === 0) {
-        console.log('video done');
-        resolve();
-      } else {
-        reject(new Error(`ffmpeg exited with code ${code}`));
-      }
-    });
-  });
+    audioSource.captureFrame(new AudioFrame(int16, sampleRate, channels, samplesPerChannel))
+}
 }
 
 export async function createRoom(url: string, token: string): Promise<Room> {
   const room = new Room();
   await room.connect(url, token, { autoSubscribe: false, dynacast: true });
-  
   return room
 }

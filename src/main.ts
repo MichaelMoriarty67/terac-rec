@@ -4,10 +4,10 @@ import * as fs from 'fs'
 import { app, BrowserWindow, ipcMain, IpcMainEvent, Menu, Tray, nativeImage, DesktopCapturerSource } from 'electron'
 import { Room } from '@livekit/rtc-node'
 
-import { getSources, getDisplaySize, startAudioRecording, stopAudioRecording } from './capture'
+import { getSources, getDisplaySize, startAudioRecording, stopAudioRecording, setAudioDataHandler } from './capture'
 import { concatVideoAudioChunks } from './merge'
 import { recFallbackDir, roomUrl, mainRoomToken, rendererRoomToken } from './config'
-import { createRoom, publishVideo } from './livekit'
+import { createRoom, publishAudio } from './livekit'
 
 
 let hiddenWindow: BrowserWindow | null = null
@@ -31,6 +31,11 @@ app.whenReady().then(async () => {
     }
 
     liveKitRoom = await createRoom(roomUrl, mainRoomToken)
+    
+    // setup handler that takes audio chunks from swift process
+    // and streams them to livekit room
+    const publishAudioCallback = await publishAudio(liveKitRoom)
+    setAudioDataHandler(publishAudioCallback)
     
     // create hidden browser window to run render process
     hiddenWindow = new BrowserWindow({
@@ -114,12 +119,6 @@ app.whenReady().then(async () => {
             throw Error("Must have current recording ts available to save chunk")
         }
         
-        const {videoPath, audioPath} = await concatVideoAudioChunks(recFallbackDir, recTimestamp)
-        if (liveKitUpload && currScreen && liveKitRoom) { // CLEAN ME
-            const {height, width} = getDisplaySize(currScreen.display_id)
-            await publishVideo(liveKitRoom, videoPath, width, height)
-        }
-
         recTimestamp = null
         segmentCounter = 0
     })

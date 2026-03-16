@@ -104,7 +104,6 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
         stream = SCStream(filter: filter, configuration: config, delegate: self)
         try stream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
         try await stream?.startCapture()
-        fputs("Audio capture started — chunk interval: \(chunkIntervalMs) ms\n", stderr)
 
         let intervalNs = UInt64(chunkIntervalMs) * 1_000_000
         chunkTask = Task {
@@ -118,12 +117,11 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
 
     @MainActor
     func stop() async throws {
-        fputs("Stopping capture...\n", stderr)
         chunkTask?.cancel()
         try await stream?.stopCapture()
 
-        let (lastWriter, lastInput, lastCounter, wasStarted) = state.withLockUnchecked { s in
-            (s.writer, s.audioInput, s.chunkCounter, s.writerStarted)
+        let (lastWriter, lastInput, wasStarted) = state.withLockUnchecked { s in
+            (s.writer, s.audioInput, s.writerStarted)
         }
 
         if wasStarted, let lastWriter {
@@ -131,7 +129,6 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 lastWriter.finishWriting { cont.resume() }
             }
-            fputs("Final chunk \(lastCounter) written to \(lastWriter.outputURL.path)\n", stderr)
         }
     }
 
@@ -164,7 +161,6 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             r.oldWriter.finishWriting { cont.resume() }
         }
-        fputs("Chunk \(r.oldCounter) written to \(r.oldWriter.outputURL.path)\n", stderr)
     }
 
     // MARK: SCStreamOutput
@@ -182,6 +178,7 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let fmt = CMSampleBufferGetFormatDescription(sampleBuffer)
 
+        // Write to file chunks
         state.withLockUnchecked { s in
             if s.formatDescription == nil {
                 s.formatDescription = fmt
@@ -209,10 +206,29 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
                 input.append(sampleBuffer)
             }
         }
+
+        // Stream raw PCM to stdout for main process
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
+        var lengthAtOffset = 0
+        var totalLength = 0
+        var dataPointer: UnsafeMutablePointer<Int8>? = nil
+
+        guard
+            CMBlockBufferGetDataPointer(
+                blockBuffer,
+                atOffset: 0,
+                lengthAtOffsetOut: &lengthAtOffset,
+                totalLengthOut: &totalLength,
+                dataPointerOut: &dataPointer
+            ) == noErr, let ptr = dataPointer
+        else { return }
+
+        let data = Data(bytes: ptr, count: totalLength)
+        FileHandle.standardOutput.write(data)
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        fputs("Stream stopped with error: \(error)\n", stderr)
+        fputs("Stream error: \(error)\n", stderr)
     }
 }
 

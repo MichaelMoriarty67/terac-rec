@@ -4,10 +4,18 @@ import { spawn, ChildProcess } from 'child_process'
 import { app, desktopCapturer, screen } from 'electron'
 
 let captureProcess: ChildProcess | null = null
+let _onAudioData: ((chunk: Buffer) => void) | null = null
 
 const binaryPath = app.isPackaged
     ? path.join(process.resourcesPath, 'ScreenCapture')
     : path.join(__dirname, '../resources/ScreenCapture')
+
+
+// callback fn for handling audio chunks
+// will pass this to livekit recorder
+export function setAudioDataHandler(cb: ((chunk: Buffer) => void) | null) {
+    _onAudioData = cb
+}
 
 export function startAudioRecording(timestamp: number): void {
     console.log("Binary path: ", binaryPath)
@@ -16,6 +24,10 @@ export function startAudioRecording(timestamp: number): void {
 
     captureProcess.stderr?.on('data', (data: Buffer) => {
         console.error('Swift stderr:', data.toString())
+    })
+
+    captureProcess.stdout?.on('data', (chunk: Buffer) => {
+        _onAudioData?.(chunk)
     })
 
     captureProcess.on('close', (code, signal) => {
