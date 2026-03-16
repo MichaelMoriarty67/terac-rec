@@ -67,21 +67,21 @@ export async function concatAudioChunks(
   return outputPath
 }
 
+// test fn
 function ffmpegMerge(
   videoPath: string,
-  audioPath: string
+  audioPath: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const tempOutput = videoPath + ".tmp.webm" // temporary output
+    const tempOutput = videoPath + ".tmp.webm"
 
     const args = [
-      "-y",               // overwrite if exists
-      "-i", videoPath,    // video input
-      "-i", audioPath,    // audio input
-      "-c:v", "copy",     // copy VP9 video
-      "-c:a", "libopus",  // convert AAC → Opus
-      "-b:a", "128k",     // audio bitrate
-      "-shortest",        // stop at shortest stream
+      "-y",
+      "-i", videoPath,
+      "-i", audioPath,
+      "-c:v", "copy",
+      "-c:a", "libopus",
+      "-b:a", "128k",
       tempOutput
     ]
 
@@ -107,7 +107,6 @@ function ffmpegMerge(
     })
   })
 }
-
 
 // merges audio and video seperately
 // files are to be in the format {timestamp}_{chunkNum}
@@ -202,4 +201,3 @@ export async function concatVideoAudioChunks(dirPath: string, ts: number) {
     audioPath: audioResult
   }
 }
-

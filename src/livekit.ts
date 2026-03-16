@@ -24,7 +24,6 @@ export async function publishAudio(room: Room): Promise<(chunk: Buffer) => void>
 })
 
   await room.localParticipant?.publishTrack(audioTrack, publishOptions)
-  console.log('audio track published')
 
   // Swift sends 32-bit float PCM, LiveKit expects 16-bit signed int
   // Convert float32 → int16 and push as AudioFrames

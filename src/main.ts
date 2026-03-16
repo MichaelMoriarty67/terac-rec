@@ -5,9 +5,9 @@ import { app, BrowserWindow, ipcMain, IpcMainEvent, Menu, Tray, nativeImage, Des
 import { Room } from '@livekit/rtc-node'
 
 import { getSources, getDisplaySize, startAudioRecording, stopAudioRecording, setAudioDataHandler } from './capture'
-import { concatVideoAudioChunks } from './merge'
 import { recFallbackDir, roomUrl, mainRoomToken, rendererRoomToken } from './config'
 import { createRoom, publishAudio } from './livekit'
+import { mergeAudioVideo } from './merge'
 
 
 let hiddenWindow: BrowserWindow | null = null
@@ -56,7 +56,10 @@ app.whenReady().then(async () => {
             label: 'Start Recording',
             type: 'normal',
             click: async (menuItem) => {
-                if (!isRecording){
+                isRecording = !isRecording
+                menuItem.label = isRecording ? 'Stop Recording' : 'Start Recording'
+
+                if (isRecording){
                     // setup trackers and dirs for recording
                     recTimestamp = Date.now()
                     segmentCounter = 0
@@ -64,10 +67,6 @@ app.whenReady().then(async () => {
                     // start audio and video recording
                     startAudioRecording(recTimestamp)
                     hiddenWindow?.webContents.send('start-recording', screens[0]?.id, roomUrl, rendererRoomToken)
-                    
-                    isRecording = !isRecording
-                    menuItem.label = isRecording ? 'Stop Recording' : 'Start Recording'
-                    tray?.setContextMenu(contextMenu)
                 } else {
                     await stopAudioRecording()
                     hiddenWindow?.webContents.send('stop-recording')
@@ -104,6 +103,10 @@ app.whenReady().then(async () => {
 
             }
             
+        },
+        {
+            label: 'Quit',
+            role: 'quit'
         }
     ])
     
@@ -126,6 +129,8 @@ app.whenReady().then(async () => {
         if (!recTimestamp) {
             throw Error("Must have current recording ts available to save chunk")
         }
+
+        mergeAudioVideo(recFallbackDir, recTimestamp)
         
         recTimestamp = null
         segmentCounter = 0
