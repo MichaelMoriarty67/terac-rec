@@ -9,6 +9,24 @@ let pendingChunks: number = 0
 let room: Room | null = null
 let videoTrack: LocalVideoTrack | null = null
 
+function connectRoomRetry(url: string, token: string): Promise<Room> {
+    return new Promise((resolve) => {
+        const attempt = async () => {
+            try {
+                const room = new Room()
+                room.prepareConnection(url, token);
+                await room.connect(url, token)
+
+                resolve(room)
+            } catch {
+                setTimeout(attempt, 5000)
+            }
+        }
+
+        attempt()
+    })
+}
+
 function startNewRecorder() {
     if (!stream) return
 
@@ -38,7 +56,14 @@ function startNewRecorder() {
     recorder.start()
 }
 
-window.electronAPI.onStartRecording(async (_, screen: string, livekitUrl: string, livekitToken: string) => {
+window.electronAPI.startRendererRoom((_, livekitUrl: string, livekitToken: string) => {
+    connectRoomRetry(livekitUrl, livekitToken).then((r: Room) => {
+        room = r
+        window.electronAPI.rendererRoomReady()
+    })
+})
+
+window.electronAPI.onStartRecording(async (_, screen: string, upload: boolean) => {
     pendingChunks = 0
 
     const getUserMediaOptions: any = {
@@ -57,18 +82,16 @@ window.electronAPI.onStartRecording(async (_, screen: string, livekitUrl: string
     startNewRecorder()
     intervalId = setInterval(() => recorder?.stop(), chunkMsInterval)
 
-    // Stream to LiveKit simultaneously
-    room = new Room()
-    room.prepareConnection(livekitUrl, livekitToken);
-    await room.connect(livekitUrl, livekitToken)
-
     const mediaStreamTrack = stream.getVideoTracks()[0]!
     videoTrack = new LocalVideoTrack(mediaStreamTrack)
-    await room.localParticipant.publishTrack(videoTrack, {
-        source: Track.Source.ScreenShare,
-    })
-
-    console.log('recording locally and streaming to livekit...')
+    
+    // Stream to LiveKit if room has been started
+    // and upload is configured in main process
+    if (room && upload) {
+        await room.localParticipant.publishTrack(videoTrack, {
+            source: Track.Source.ScreenShare,
+        })
+    }
 })
 
 window.electronAPI.onStopRecording(async () => {
@@ -76,12 +99,10 @@ window.electronAPI.onStopRecording(async () => {
 
     // Stop LiveKit stream
     if (videoTrack) {
-        await room?.localParticipant.unpublishTrack(videoTrack)
+        await room?.localParticipant.unpublishTrack(videoTrack, false)
         videoTrack.stop()
         videoTrack = null
     }
-    await room?.disconnect()
-    room = null
 
     // Stop local chunking
     clearInterval(intervalId!)
@@ -97,4 +118,13 @@ window.electronAPI.liveKitToggle(async (_, upload: boolean) => {
     } else {
         await room?.localParticipant.unpublishTrack(videoTrack, false)
     }
+})
+
+window.electronAPI.cleanup(async () => {
+    if (videoTrack) {
+        await room?.localParticipant.unpublishTrack(videoTrack)
+        videoTrack.stop()
+    }
+
+    room?.disconnect()
 })

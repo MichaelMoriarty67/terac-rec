@@ -16,6 +16,7 @@ let isRecording = false
 let screens: DesktopCapturerSource[] = []
 let currScreen: DesktopCapturerSource | null = null
 let liveKitUpload: boolean = false
+let rendererRoomAvail: boolean = false
 let publishAudioCallback = (chunk: Buffer<ArrayBufferLike>) => {}
 let recTimestamp: number | null = null
 let segmentCounter: number = 0
@@ -46,7 +47,8 @@ function buildContextMenu() {
 
                     // start audio and video recording
                     startAudioRecording(recTimestamp)
-                    hiddenWindow?.webContents.send('start-recording', screens[0]?.id, roomUrl, rendererRoomToken)
+                    console.log("starting recording with livekit upload as: ", liveKitUpload)
+                    hiddenWindow?.webContents.send('start-recording', currScreen?.id, liveKitUpload)
                 } else {
                     await stopAudioRecording()
                     hiddenWindow?.webContents.send('stop-recording')
@@ -71,7 +73,7 @@ function buildContextMenu() {
             label: 'Upload to LiveKit',
             type: 'checkbox',
             checked: liveKitUpload,
-            enabled: liveKitRoom ? true : false,
+            enabled: liveKitRoom && rendererRoomAvail ? true : false,
             click: (menuItem) => {
                 liveKitUpload = menuItem.checked
                 if (!liveKitUpload) {
@@ -161,11 +163,25 @@ app.whenReady().then(async () => {
         segmentCounter = 0
     })
 
+    ipcMain.on('renderer-room-ready', (_: IpcMainEvent) => {
+        console.log()
+        console.log()
+        console.log()
+        console.log("render room ready...")
+        rendererRoomAvail = true
+        tray?.setContextMenu(buildContextMenu())
+    })
+
 
     hiddenWindow.webContents.on('did-finish-load', () => {
         tray?.setContextMenu(buildContextMenu())
         hiddenWindow?.webContents.openDevTools({ mode: 'detach' })
+        hiddenWindow?.webContents.send('start-renderer-room', roomUrl, rendererRoomToken)
     })
 
     hiddenWindow.loadFile('renderer/index.html')
+})
+
+app.on('before-quit', async () => {
+    hiddenWindow?.webContents.send('cleanup-renderer')
 })
