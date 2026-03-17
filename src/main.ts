@@ -15,49 +15,29 @@ let tray: Tray | null = null
 let isRecording = false
 let screens: DesktopCapturerSource[] = []
 let currScreen: DesktopCapturerSource | null = null
-let liveKitUpload: boolean = true
+let liveKitUpload: boolean = false
+let publishAudioCallback = (chunk: Buffer<ArrayBufferLike>) => {}
 let recTimestamp: number | null = null
 let segmentCounter: number = 0
 let liveKitRoom: Room | null = null
+
+const redIcon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=')
+const greenIcon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACOSURBVHgBpZLRDYAgEEOrEzgCozCCGzkCbKArOIlugJvgoRAUNcLRpvGH19TkgFQWkqIohhK8UEaKwKcsOg/+WR1vX+AlA74u6q4FqgCOSzwsGHCwbKliAF89Cv89tWmOT4VaVMoVbOBrdQUz+FrD6XItzh4LzYB1HFJ9yrEkZ4l+wvcid9pTssh4UKbPd+4vED2Nd54iAAAAAElFTkSuQmCC')
 
 if (!fs.existsSync(recFallbackDir)) {
     fs.mkdirSync(recFallbackDir, {recursive: true})
 }
 
-app.whenReady().then(async () => {    
-    screens = await getSources()
-    if (screens.length > 0) {
-        currScreen = screens[0] ?? null
-    }
-
-    liveKitRoom = await createRoom(roomUrl, mainRoomToken)
-    
-    // setup handler that takes audio chunks from swift process
-    // and streams them to livekit room
-    const publishAudioCallback = await publishAudio(liveKitRoom)
-    setAudioDataHandler(publishAudioCallback)
-    
-    // create hidden browser window to run render process
-    hiddenWindow = new BrowserWindow({
-        show: false,
-        webPreferences: {
-            preload: path.join(__dirname, '../out/preload.js'),
-            contextIsolation: true,
-            nodeIntegration: false,
-        }
-    })
-
-    const red = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=')
-    const green = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACOSURBVHgBpZLRDYAgEEOrEzgCozCCGzkCbKArOIlugJvgoRAUNcLRpvGH19TkgFQWkqIohhK8UEaKwKcsOg/+WR1vX+AlA74u6q4FqgCOSzwsGHCwbKliAF89Cv89tWmOT4VaVMoVbOBrdQUz+FrD6XItzh4LzYB1HFJ9yrEkZ4l+wvcid9pTssh4UKbPd+4vED2Nd54iAAAAAElFTkSuQmCC')
-
-    tray = new Tray(red)
-    const contextMenu = Menu.buildFromTemplate([
+function buildContextMenu() {
+    return Menu.buildFromTemplate([
         {
             label: 'Start Recording',
             type: 'normal',
+            icon: greenIcon,
             click: async (menuItem) => {
                 isRecording = !isRecording
                 menuItem.label = isRecording ? 'Stop Recording' : 'Start Recording'
+                menuItem.icon = isRecording ? redIcon : greenIcon
 
                 if (isRecording){
                     // setup trackers and dirs for recording
@@ -91,6 +71,7 @@ app.whenReady().then(async () => {
             label: 'Upload to LiveKit',
             type: 'checkbox',
             checked: liveKitUpload,
+            enabled: liveKitRoom ? true : false,
             click: (menuItem) => {
                 liveKitUpload = menuItem.checked
                 if (!liveKitUpload) {
@@ -109,6 +90,50 @@ app.whenReady().then(async () => {
             role: 'quit'
         }
     ])
+}
+
+function connectWithRetry(url: string, token: string, intervalMs: number = 5000): Promise<Room> {
+  return new Promise((resolve) => {
+    const attempt = async () => {
+      try {
+        const room = await createRoom(url, token)
+        resolve(room) 
+      } catch (err) {
+        console.error('LiveKit connection failed: ', err)
+        setTimeout(attempt, intervalMs) 
+      }
+    }
+
+    attempt()
+  })
+}
+
+app.whenReady().then(async () => {    
+    screens = await getSources()
+    if (screens.length > 0) {
+        currScreen = screens[0] ?? null
+    }
+    
+    // create hidden browser window to run render process
+    hiddenWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+            preload: path.join(__dirname, '../out/preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        }
+    })
+
+    tray = new Tray(redIcon)
+
+    connectWithRetry(roomUrl, mainRoomToken).then(async (room: Room) => {
+        liveKitRoom = room
+        publishAudioCallback = await publishAudio(liveKitRoom)
+        setAudioDataHandler(publishAudioCallback)
+        liveKitUpload = true
+
+        tray?.setContextMenu(buildContextMenu())
+    })
     
     // register ipc event handler for when video chunks are sent from render process
     ipcMain.on('video-chunk-ready', (_: IpcMainEvent, buffer: ArrayBuffer, start_ts: number) => {
@@ -138,7 +163,7 @@ app.whenReady().then(async () => {
 
 
     hiddenWindow.webContents.on('did-finish-load', () => {
-        tray?.setContextMenu(contextMenu)
+        tray?.setContextMenu(buildContextMenu())
         hiddenWindow?.webContents.openDevTools({ mode: 'detach' })
     })
 
