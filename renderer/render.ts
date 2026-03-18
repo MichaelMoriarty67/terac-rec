@@ -1,13 +1,12 @@
 import { Room, LocalVideoTrack, Track } from 'livekit-client'
 
-const chunkMsInterval: number = 5000
-
 let recorder: MediaRecorder | null = null
 let stream: MediaStream | null = null
-let intervalId: ReturnType<typeof setInterval> | null = null
 let pendingChunks: number = 0
 let room: Room | null = null
 let videoTrack: LocalVideoTrack | null = null
+let isFirstChunk: boolean = true
+let isRunning: boolean = false
 
 function connectRoomRetry(url: string, token: string): Promise<Room> {
     return new Promise((resolve) => {
@@ -40,13 +39,13 @@ function startNewRecorder() {
         window.electronAPI.sendVideoChunk(buf, Date.now())
         pendingChunks--
 
-        if (!intervalId && pendingChunks === 0) {
+        if (!isRunning && pendingChunks === 0) {
             window.electronAPI.sendVideoReady()
         }
     }
 
     recorder.onstop = () => {
-        if (intervalId) {
+        if (isRunning) {
             startNewRecorder()
         } else if (pendingChunks === 0) {
             window.electronAPI.sendVideoReady()
@@ -54,6 +53,10 @@ function startNewRecorder() {
     }
 
     recorder.start()
+    if (isFirstChunk) {
+        window.electronAPI.videoRecordingStarted(Date.now())
+        isFirstChunk = false
+    }
 }
 
 window.electronAPI.startRendererRoom((_, livekitUrl: string, livekitToken: string) => {
@@ -65,6 +68,8 @@ window.electronAPI.startRendererRoom((_, livekitUrl: string, livekitToken: strin
 
 window.electronAPI.onStartRecording(async (_, screen: string, upload: boolean) => {
     pendingChunks = 0
+    isFirstChunk = true
+    isRunning = true
 
     const getUserMediaOptions: any = {
         audio: false,
@@ -77,11 +82,7 @@ window.electronAPI.onStartRecording(async (_, screen: string, upload: boolean) =
     }
 
     stream = await navigator.mediaDevices.getUserMedia(getUserMediaOptions)
-
-    // Start local chunking
     startNewRecorder()
-    intervalId = setInterval(() => recorder?.stop(), chunkMsInterval)
-
     const mediaStreamTrack = stream.getVideoTracks()[0]!
     videoTrack = new LocalVideoTrack(mediaStreamTrack)
     
@@ -97,17 +98,20 @@ window.electronAPI.onStartRecording(async (_, screen: string, upload: boolean) =
 window.electronAPI.onStopRecording(async () => {
     if (!recorder) return
 
-    // Stop LiveKit stream
+    // Unpublish livekit video track
     if (videoTrack) {
         await room?.localParticipant.unpublishTrack(videoTrack, false)
         videoTrack.stop()
         videoTrack = null
     }
 
-    // Stop local chunking
-    clearInterval(intervalId!)
-    intervalId = null
+    isRunning = false
     recorder.stop()
+})
+
+window.electronAPI.onRotateChunk(() => {
+    if (!isRunning) return
+    recorder?.stop()
 })
 
 window.electronAPI.liveKitToggle(async (_, upload: boolean) => {

@@ -6,8 +6,6 @@ import os
 
 // MARK: - Configuration
 
-let chunkIntervalMs: Int = 5000
-
 let recordingTimestamp: String = {
     if let idx = CommandLine.arguments.firstIndex(of: "--timestamp"),
         idx + 1 < CommandLine.arguments.count
@@ -72,14 +70,13 @@ struct AudioState: @unchecked Sendable {
 
 final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
     nonisolated(unsafe) var stream: SCStream?
-    nonisolated(unsafe) var chunkTask: Task<Void, Never>?
+    nonisolated(unsafe) var stdinTask: Task<Void, Never>?
 
-    let chunkIntervalMs: Int
     let state: OSAllocatedUnfairLock<AudioState>
 
-    init(chunkIntervalMs: Int) throws {
-        self.chunkIntervalMs = chunkIntervalMs
+    override init() {
         self.state = OSAllocatedUnfairLock(initialState: AudioState())
+        super.init()
     }
 
     // MARK: Start / Stop
@@ -105,19 +102,36 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
         try stream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
         try await stream?.startCapture()
 
-        let intervalNs = UInt64(chunkIntervalMs) * 1_000_000
-        chunkTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: intervalNs)
-                guard !Task.isCancelled else { break }
-                await rotateChunk()
+        // Listen for rotate signals from Node via stdin
+        stdinTask = Task {
+            let handle = FileHandle.standardInput
+            var buffer = Data()
+
+            do {
+                for try await chunk in handle.bytes {
+                    buffer.append(chunk)
+
+                    // Process complete lines
+                    while let newlineIndex = buffer.firstIndex(of: UInt8(ascii: "\n")) {
+                        let line = String(
+                            data: buffer[buffer.startIndex..<newlineIndex], encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        buffer.removeSubrange(buffer.startIndex...newlineIndex)
+
+                        if line == "rotate" {
+                            await rotateChunk()
+                        }
+                    }
+                }
+            } catch {
+                fputs("stdin read error: \(error)\n", stderr)
             }
         }
     }
 
     @MainActor
     func stop() async throws {
-        chunkTask?.cancel()
+        stdinTask?.cancel()
         try await stream?.stopCapture()
 
         let (lastWriter, lastInput, wasStarted) = state.withLockUnchecked { s in
@@ -134,7 +148,7 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
 
     // MARK: Chunk Rotation
 
-    private func rotateChunk() async {
+    func rotateChunk() async {
         typealias RotateResult = (
             oldWriter: AVAssetWriter,
             oldInput: AVAssetWriterInput?,
@@ -236,7 +250,7 @@ final class Capturer: NSObject, SCStreamDelegate, SCStreamOutput {
 
 nonisolated(unsafe) var shutdownContinuation: CheckedContinuation<Void, Never>?
 
-let capturer = try Capturer(chunkIntervalMs: chunkIntervalMs)
+let capturer = Capturer()
 
 Task { @MainActor in
     do {

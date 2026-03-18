@@ -1,14 +1,12 @@
-import os from 'os'
 import path from 'path'
 import * as fs from 'fs'
 import { app, BrowserWindow, ipcMain, IpcMainEvent, Menu, Tray, nativeImage, DesktopCapturerSource } from 'electron'
 import { Room } from '@livekit/rtc-node'
 
-import { getSources, getDisplaySize, startAudioRecording, stopAudioRecording, setAudioDataHandler } from './capture'
-import { recFallbackDir, roomUrl, mainRoomToken, rendererRoomToken } from './config'
+import { getSources, getDisplaySize, startAudioRecording, stopAudioRecording, setAudioDataHandler, rotateAudioChunk } from './capture'
+import { recFallbackDir, roomUrl, mainRoomToken, rendererRoomToken, chunkMs } from './config'
 import { createRoom, publishAudio } from './livekit'
 import { mergeAudioVideo } from './merge'
-
 
 let hiddenWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -21,6 +19,8 @@ let publishAudioCallback = (chunk: Buffer<ArrayBufferLike>) => {}
 let recTimestamp: number | null = null
 let segmentCounter: number = 0
 let liveKitRoom: Room | null = null
+let vidAudOffsetMs: number = 0
+let chunkTimerId: ReturnType<typeof setInterval> | null = null
 
 const redIcon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=')
 const greenIcon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACOSURBVHgBpZLRDYAgEEOrEzgCozCCGzkCbKArOIlugJvgoRAUNcLRpvGH19TkgFQWkqIohhK8UEaKwKcsOg/+WR1vX+AlA74u6q4FqgCOSzwsGHCwbKliAF89Cv89tWmOT4VaVMoVbOBrdQUz+FrD6XItzh4LzYB1HFJ9yrEkZ4l+wvcid9pTssh4UKbPd+4vED2Nd54iAAAAAElFTkSuQmCC')
@@ -47,9 +47,15 @@ function buildContextMenu() {
 
                     // start audio and video recording
                     startAudioRecording(recTimestamp)
-                    console.log("starting recording with livekit upload as: ", liveKitUpload)
                     hiddenWindow?.webContents.send('start-recording', currScreen?.id, liveKitUpload)
+
+                    // interval for rotating chunks
+                    chunkTimerId = setInterval(() => {
+                        rotateAudioChunk()                                    // → writes "rotate\n" to swift stdin
+                        hiddenWindow?.webContents.send('rotate-chunk')        // → renderer stops/starts recorder
+                    }, chunkMs)
                 } else {
+                    chunkTimerId ? clearInterval(chunkTimerId) : {}
                     await stopAudioRecording()
                     hiddenWindow?.webContents.send('stop-recording')
                 }
@@ -151,23 +157,28 @@ app.whenReady().then(async () => {
         segmentCounter++
     })
 
+    ipcMain.on('video-started', (_: IpcMainEvent, ts: number) => {
+        if (!recTimestamp) {
+            throw Error("Must have current recording ts available to update vid/aud offset")
+        }
+
+        vidAudOffsetMs = ts - recTimestamp
+    })
+
     // register ipc event handler for when render process is done recording video
     ipcMain.on('video-ready', async (_: IpcMainEvent)=> {
         if (!recTimestamp) {
             throw Error("Must have current recording ts available to save chunk")
         }
 
-        mergeAudioVideo(recFallbackDir, recTimestamp)
+        mergeAudioVideo(recFallbackDir, recTimestamp, vidAudOffsetMs)
         
         recTimestamp = null
         segmentCounter = 0
+        vidAudOffsetMs = 0
     })
 
     ipcMain.on('renderer-room-ready', (_: IpcMainEvent) => {
-        console.log()
-        console.log()
-        console.log()
-        console.log("render room ready...")
         rendererRoomAvail = true
         tray?.setContextMenu(buildContextMenu())
     })

@@ -67,16 +67,17 @@ export async function concatAudioChunks(
   return outputPath
 }
 
-// test fn
 function ffmpegMerge(
   videoPath: string,
   audioPath: string,
+  vidAudOffsetMs: number,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const tempOutput = videoPath + ".tmp.webm"
 
     const args = [
       "-y",
+      "-ss", (vidAudOffsetMs / 1000).toFixed(3),
       "-i", videoPath,
       "-i", audioPath,
       "-c:v", "copy",
@@ -110,7 +111,7 @@ function ffmpegMerge(
 
 // merges audio and video seperately
 // files are to be in the format {timestamp}_{chunkNum}
-export async function mergeAudioVideo(dirPath: string, ts: number) {
+export async function mergeAudioVideo(dirPath: string, ts: number, vidAudOffsetMs: number) {
     const allFiles = fs.readdirSync(dirPath)
 
     const filesToMerge: Record<number, { video?: string; audio?: string }> = {}
@@ -137,11 +138,13 @@ export async function mergeAudioVideo(dirPath: string, ts: number) {
 
     const merges: Promise<string>[] = []
 
+    let c: number = 0
     for (const chunk of Object.keys(filesToMerge)) {
         const entry = filesToMerge[Number(chunk)]
 
         if (entry && entry.video && entry.audio) {
-            merges.push(ffmpegMerge(entry.video, entry.audio))
+            merges.push(ffmpegMerge(entry.video, entry.audio, c ? 0 : vidAudOffsetMs))
+            c++
         }
     }
 

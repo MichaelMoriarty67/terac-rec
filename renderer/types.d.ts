@@ -9,6 +9,8 @@ declare global {
             startRendererRoom: (callback: (event: unknown, liveKitUrl: string, livekitToken: string) => void) => void
             rendererRoomReady: () => void
             cleanup: (callback: (event: unknown) => void) => void
+            videoRecordingStarted: (ts: number) => void
+            onRotateChunk: (callback: (event: unknown) => void) => void
         }
     }
 }

@@ -8,5 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     liveKitToggle: (callback: (event: IpcRendererEvent, upload: boolean) => void) => ipcRenderer.on('livekit-toggle', callback),
     startRendererRoom: (callback: (event: IpcRendererEvent, liveKitUrl: String, livekitToken: string) => void) => ipcRenderer.on('start-renderer-room', callback),
     rendererRoomReady: () => ipcRenderer.send('renderer-room-ready'),
-    cleanup: (callback: (event: IpcRendererEvent) => void) => ipcRenderer.on('cleanup-renderer', callback)
+    cleanup: (callback: (event: IpcRendererEvent) => void) => ipcRenderer.on('cleanup-renderer', callback),
+    videoRecordingStarted: (ts: number) => ipcRenderer.send('video-started', ts),
+    onRotateChunk: (callback: (event: IpcRendererEvent) => void) => ipcRenderer.on('rotate-chunk', callback)
 })

@@ -18,9 +18,7 @@ export function setAudioDataHandler(cb: ((chunk: Buffer) => void) | null) {
 }
 
 export function startAudioRecording(timestamp: number): void {
-    console.log("Binary path: ", binaryPath)
     captureProcess = spawn(binaryPath, ['--timestamp', timestamp.toString()])
-    console.log('Swift process spawned, PID:', captureProcess.pid)
 
     captureProcess.stderr?.on('data', (data: Buffer) => {
         console.error('Swift stderr:', data.toString())
@@ -28,10 +26,6 @@ export function startAudioRecording(timestamp: number): void {
 
     captureProcess.stdout?.on('data', (chunk: Buffer) => {
         _onAudioData?.(chunk)
-    })
-
-    captureProcess.on('close', (code, signal) => {
-        console.log('Swift process exited with code:', code, 'signal:', signal)
     })
 }
 
@@ -47,6 +41,11 @@ export function stopAudioRecording(): Promise<void> {
         // tell swift process to stop recording
         captureProcess.kill('SIGINT')
     })
+}
+
+export function rotateAudioChunk(): void {
+    if (!captureProcess) return
+    captureProcess.stdin?.write('rotate\n')
 }
 
 export async function getSources() {
