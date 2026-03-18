@@ -17,10 +17,18 @@ let recordingTimestamp: String = {
 }()
 
 let outputDir: String = {
-    let dir = FileManager.default
-        .homeDirectoryForCurrentUser
-        .appendingPathComponent("Documents/Terac/Recordings")
-        .path
+    let dir: String
+    if let idx = CommandLine.arguments.firstIndex(of: "--output-dir"),
+        idx + 1 < CommandLine.arguments.count
+    {
+        dir = CommandLine.arguments[idx + 1]
+    } else {
+        dir =
+            FileManager.default
+            .homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/Terac/Recordings")
+            .path
+    }
     try? FileManager.default.createDirectory(
         atPath: dir,
         withIntermediateDirectories: true

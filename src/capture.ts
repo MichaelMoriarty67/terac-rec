@@ -1,7 +1,7 @@
 import path from 'path'
 import { spawn, ChildProcess } from 'child_process'
-
 import { app, desktopCapturer, screen } from 'electron'
+import { recFallbackDir } from './config'
 
 let captureProcess: ChildProcess | null = null
 let _onAudioData: ((chunk: Buffer) => void) | null = null
@@ -18,7 +18,10 @@ export function setAudioDataHandler(cb: ((chunk: Buffer) => void) | null) {
 }
 
 export function startAudioRecording(timestamp: number): void {
-    captureProcess = spawn(binaryPath, ['--timestamp', timestamp.toString()])
+    captureProcess = spawn(binaryPath, [
+    '--timestamp', timestamp.toString(),
+    '--output-dir', recFallbackDir
+])
 
     captureProcess.stderr?.on('data', (data: Buffer) => {
         console.error('Swift stderr:', data.toString())

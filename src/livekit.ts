@@ -1,13 +1,11 @@
 import {
   Room,
-  VideoSource,
   AudioSource,
   LocalAudioTrack,
   AudioFrame,
   TrackPublishOptions,
   TrackSource
 } from '@livekit/rtc-node';
-import { spawn } from 'child_process';
 
 export async function publishAudio(room: Room): Promise<(chunk: Buffer) => void> {
   const sampleRate = 48000

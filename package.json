@@ -1,5 +1,5 @@
 {
-  "name": "electron-screen-recorder",
+  "name": "terac-screen-rec",
   "version": "1.0.0",
   "description": "screen recorder for Terac take home!",
   "main": "out/main.js",
